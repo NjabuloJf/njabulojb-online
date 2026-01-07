@@ -1,60 +1,116 @@
+
 "use client";
+import { cn } from "@/lib/utils";
+import { cva, type VariantProps } from "class-variance-authority";
+import { motion, useMotionValue, useSpring, useTransform, MotionValue } from "framer-motion";
+import React, { PropsWithChildren, useRef } from "react";
 
-import { AnimatePresence, motion, useInView, Variants } from "framer-motion";
-import { useRef } from "react";
-
-interface BlurFadeProps {
-  children: React.ReactNode;
+export interface DockProps extends VariantProps<typeof dockVariants> {
   className?: string;
-  variant?: {
-    hidden: { y: number };
-    visible: { y: number };
-  };
-  duration?: number;
-  delay?: number;
-  yOffset?: number;
-  inView?: boolean;
-  inViewMargin?: string;
-  blur?: string;
+  magnification?: number;
+  distance?: number;
+  children: React.ReactNode;
 }
-const BlurFade = ({
-  children,
-  className,
-  variant,
-  duration = 0.4,
-  delay = 0,
-  yOffset = 6,
-  inView = false,
-  inViewMargin = "-50px",
-  blur = "6px",
-}: BlurFadeProps) => {
-  const ref = useRef(null);
-  const inViewResult = useInView(ref, { once: true, margin: inViewMargin });
-  const isInView = !inView || inViewResult;
-  const defaultVariants: Variants = {
-    hidden: { y: yOffset, opacity: 0, filter: `blur(${blur})` },
-    visible: { y: -yOffset, opacity: 1, filter: `blur(0px)` },
-  };
-  const combinedVariants = variant || defaultVariants;
-  return (
-    <AnimatePresence>
+
+const DEFAULT_MAGNIFICATION = 60;
+const DEFAULT_DISTANCE = 140;
+
+const dockVariants = cva(
+  "mx-auto w-max h-full p-2 flex items-end rounded-full border"
+);
+
+const Dock = React.forwardRef<HTMLDivElement, DockProps>(
+  ({
+    className,
+    children,
+    magnification = DEFAULT_MAGNIFICATION,
+    distance = DEFAULT_DISTANCE,
+    ...props
+  }, ref) => {
+    const mousex = useMotionValue(Infinity);
+
+    const renderChildren = () => {
+      return React.Children.map(children, (child: any) => {
+        if (React.isValidElement(child)) {
+          return React.cloneElement(child, {
+            mousex,
+            magnification,
+            distance,
+          } as DockIconProps);
+        }
+        return child;
+      });
+    };
+
+    return (
       <motion.div
         ref={ref}
-        initial="hidden"
-        animate={isInView ? "visible" : "hidden"}
-        exit="hidden"
-        variants={combinedVariants}
-        transition={{
-          delay: 0.04 + delay,
-          duration,
-          ease: "easeOut",
-        }}
-        className={className}
+        onMouseMove={(e) => mousex.set(e.pageX)}
+        onMouseLeave={() => mousex.set(Infinity)}
+        {...props}
+        className={cn(dockVariants({ className }))}
       >
-        {children}
+        {renderChildren()}
       </motion.div>
-    </AnimatePresence>
+    );
+  }
+);
+
+Dock.displayName = "Dock";
+
+export interface DockIconProps {
+  size?: number;
+  magnification?: number;
+  distance?: number;
+  mousex?: MotionValue<number>;
+  className?: string;
+  children?: React.ReactNode;
+  props?: PropsWithChildren;
+}
+
+const DockIcon = ({
+  size,
+  magnification = DEFAULT_MAGNIFICATION,
+  distance = DEFAULT_DISTANCE,
+  mousex,
+  className,
+  children,
+  ...props
+}: DockIconProps) => {
+  const ref = useRef<HTMLDivElement>(null);
+
+  const distanceCalc = useTransform(mousex, (val: number) => {
+    const bounds = ref.current?.getBoundingClientRect() ?? { x: 0, width: 0 };
+    return val - bounds.x - bounds.width / 2;
+  });
+
+  let widthSync = useTransform(
+    distanceCalc,
+    [-distance, 0, distance],
+    [40, magnification, 40]
+  );
+
+  let width = useSpring(widthSync, {
+    mass: 0.1,
+    stiffness: 150,
+    damping: 12,
+  });
+
+  return (
+    <motion.div
+      ref={ref}
+      style={{ width }}
+      className={cn(
+        "flex aspect-square cursor-pointer items-center justify-center rounded-full",
+        className
+      )}
+      {...props}
+    >
+      {children}
+    </motion.div>
   );
 };
 
-export default BlurFade;
+DockIcon.displayName = "DockIcon";
+
+export { Dock, DockIcon, dockVariants };
