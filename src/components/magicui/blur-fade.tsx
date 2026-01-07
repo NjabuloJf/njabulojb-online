@@ -56,3 +56,4 @@ const BlurFade = ({
 
 export default BlurFade;
 
+
